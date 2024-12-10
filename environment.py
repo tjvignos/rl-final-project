@@ -4,7 +4,7 @@ import pygame as pg
 from gymnasium import spaces
 
 class AirplaneEnv(gym.Env):
-    def __init__(self):
+    def __init__(self, moving=False):
         # constants
         self.speed = 3.0
         self.waypoint_radius = 20
@@ -15,6 +15,7 @@ class AirplaneEnv(gym.Env):
         self.turn_rate = 0.1
         self.num_obstacles = 20
         self.safe_radius = 50
+        self.moving = moving
         
         # spaces
         num_actions = 3  # left, straight, right
@@ -47,7 +48,7 @@ class AirplaneEnv(gym.Env):
         # generate random obstacles with different shapes
         self.obstacles = []
         for _ in range(self.num_obstacles):
-            pos = self._random_position()
+            pos = self._random_position().astype(float)
             shape = np.random.choice(['circle', 'rect', 'triangle'])
             size = np.random.randint(10, 20)
 
@@ -116,6 +117,24 @@ class AirplaneEnv(gym.Env):
             np.sin(np.deg2rad(self.state['heading']))
         ])
         self.state['pos'] += direction * self.speed
+
+        # update obstacle positions if moving
+        if self.moving:
+            for obs in self.obstacles:
+                if obs['shape'] == 'triangle':
+                    if 0 > obs['pos'][0]:
+                        obs['pos'][0] = self.screen_size
+                    elif obs['pos'][0] > self.screen_size:
+                        obs['pos'][0] = 0
+                    if 0 > obs['pos'][1]:
+                        obs['pos'][1] = self.screen_size
+                    elif obs['pos'][1] > self.screen_size:
+                        obs['pos'][1] = 0
+                    obs_direction = np.array([
+                        np.cos(np.deg2rad(obs['rotation'])),
+                        np.sin(np.deg2rad(obs['rotation']))
+                    ])
+                    obs['pos'] += obs_direction * self.speed
         
         # check if reached waypoint
         dist_to_waypoint = np.linalg.norm(self.state['pos'] - self.state['waypoint'])
@@ -213,7 +232,7 @@ if __name__ == "__main__":
     """
     example usage of the environment with keyboard input
     """
-    env = AirplaneEnv()
+    env = AirplaneEnv(input("moving obstacles? (y/n): ") == 'y')
     obs = env.reset()[0]
     done = False
     
