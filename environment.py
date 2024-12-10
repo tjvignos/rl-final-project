@@ -2,6 +2,8 @@ import gymnasium as gym
 import numpy as np
 import pygame as pg
 from gymnasium import spaces
+from datetime import datetime
+import pickle
 
 class AirplaneEnv(gym.Env):
     def __init__(self, moving=False):
@@ -15,8 +17,14 @@ class AirplaneEnv(gym.Env):
         self.turn_rate = 0.1
         self.num_obstacles = 20
         self.safe_radius = 50
+        
+        # arguments
         self.moving = moving
         
+        # variables
+        self.recording = False
+        self.demonstration_data = []
+
         # spaces
         num_actions = 3  # left, straight, right
         self.action_space = spaces.Discrete(num_actions)
@@ -103,6 +111,24 @@ class AirplaneEnv(gym.Env):
             readings.append(min_dist)
         return np.array(readings)
     
+    def _save_demonstration(self):
+        if len(self.demonstration_data) > 0:
+            filename = f"expert_demo_{str(datetime.now())}.pkl"
+            
+            observations = np.array([data[0] for data in self.demonstration_data])
+            actions = np.array([data[1] for data in self.demonstration_data])
+            
+            demonstration = {
+                'observations': observations,
+                'actions': actions
+            }
+            
+            with open(filename, 'wb') as f:
+                pickle.dump(demonstration, f)
+            
+            self.demonstration_data = []
+            self.recording = False
+
     def step(self, action):
         # map discrete action to yaw rate
         yaw_rates = [-self.turn_rate, 0, self.turn_rate]
@@ -141,7 +167,7 @@ class AirplaneEnv(gym.Env):
         done = dist_to_waypoint < self.waypoint_radius
         
         # compute reward
-        reward = -0.1
+        reward = -1 * dist_to_waypoint
         if done:
             reward = 100
         
@@ -173,6 +199,10 @@ class AirplaneEnv(gym.Env):
     
     def render(self):
         self.screen.fill((255, 255, 255))
+
+        # dot in corner if recording
+        if self.recording:
+            pg.draw.circle(self.screen, (255, 0, 0), (20, 20), 5)
         
         # draw obstacles
         for obs in self.obstacles:
@@ -239,6 +269,25 @@ if __name__ == "__main__":
     while True:
         env.render()
         
+        # check for recording or quitting
+        for event in pg.event.get():
+            if event.type == pg.QUIT:
+                if env.recording:
+                    env._save_demonstration()
+                env.close()
+                exit()
+            if event.type == pg.KEYDOWN:
+                if event.key == pg.K_r:
+                    if env.recording:
+                        env._save_demonstration()
+                    else:
+                        env.recording = True
+
+        # save demonstration data
+        if env.recording:
+            env.demonstration_data.append((env.state.copy(), action))
+
+
         # handle keyboard input
         for event in pg.event.get():
             if event.type == pg.QUIT:
